@@ -6,7 +6,7 @@
     <meta content='width=device-width; height=device-height; initial-scale=1.0; maximum-scale=1.0; user-scalable=0;' name='viewport' />
     <meta name="viewport" content="width=device-width" />
     <meta name="license" content="
-        Copyright 2013 Google, Abram Hindle
+        Copyright 2013 Google, Abram Hindle, Justin Boileau
         
         Licensed under the Apache License, Version 2.0 (the "License");
         you may not use this file except in compliance with the License.
@@ -44,11 +44,21 @@ debug("Test");
 
 world = {};
 
+const colors = ['red', 'orange', 'yellow', 'green', 'blue', 'indigo', 'purple'];
+let color_i = 0;
+
+function getNextColor() {
+    color = colors[color_i];
+    color_i = (color_i + 1) % (colors.length);
+    return color;
+}
+
 //XXX: TODO Make this prettier!
+// Made circles thinner and rainbow!
 function drawCircle(context,entity) {
     with(context) {
         beginPath();                
-        lineWidth = 3;
+        lineWidth = 1;
         var x = entity["x"];
         var y = entity["y"];
         //moveTo(x,y);
@@ -121,38 +131,12 @@ function getPosition(e) {
 	}
 }
 
-function sendJSONXMLHTTPRequest(url, objects, callback) {
-    var xhr = new XMLHttpRequest();
-    xhr.onreadystatechange = function () {
-        if (xhr.readyState==4) {
-            try {
-                if (xhr.status==200) {
-                    //XXX: parse some JSON from the request!
-                    //XXX: Pass the data to the callback!
-                    callback(JSON.parse(xhr.response));
-                }
-            } 
-            catch(e) {
-                alert('Error: ' + e.name);
-            }
-        }
-    };
-    //XXX: POST to a URL
-    //XXX: set the mimetype and the accept headers!
-    // Remember to use application/json !
-    xhr.open("POST", url);
-    xhr.setRequestHeader('Accept', 'application/json');
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.send(JSON.stringify(objects));
-}
-
 function addEntity(entity, data) {
     world[entity] = data;
     drawNextFrame(); // (but should we?)
     //XXX: Send a XHTML Request that updates the entity you just modified!
-    sendJSONXMLHTTPRequest(`http://${window.location.host}/entity/${entity}`, data, (d) => {
-        world[entity] = d;
-    });
+    // Write entity to socket
+    socket.send(JSON.stringify({[entity]: data}))
 }
 var counter = 0;
 function addEntityWithoutName(data) {
@@ -258,16 +242,17 @@ mouse = (function() {
 
 // Add the application specific mouse listeners!
 //XXX: TODO Make these prettier!
+// Made circles thinner and rainbow!
 mouse.mousedowners.push(function(x,y,clicked,e) {
-    addEntityWithoutName({'x':x,'y':y,'colour':'blue'});
+    addEntityWithoutName({'x':x,'y':y,'colour':getNextColor()});
 });
 
 mouse.mouseuppers.push(function(x,y,clicked,e) {
-    addEntityWithoutName({'x':x,'y':y,'colour':'red'});
+    addEntityWithoutName({'x':x,'y':y,'colour':getNextColor()});
 });
 
 mouse.mousedraggers.push(function(x,y,clicked,e) {
-    addEntityWithoutName({'x':x,'y':y,'colour':'green',
+    addEntityWithoutName({'x':x,'y':y,'colour':getNextColor(),
                           'radius':10});
 });
 
@@ -282,16 +267,27 @@ function wsSetup() {
     socket = new WebSocket(url);
     socket.onopen = function() {
         //XXX: TODO What are you going to do here?
-        console.log('running onopen')
-    };
+        // Get the world
+        const req = new XMLHttpRequest();
+        req.onload = (event) => {
+            world = JSON.parse(event.target.responseText);
+            drawNextFrame();
+        }
+        req.open("GET", `http://${window.location.host}/world`);
+        req.send();
+        };
     socket.onerror = function(msg) {
         debug("WebSocket Error:" + msg.data);
     };
     socket.onmessage = function(msg) {  
-        console.log('got message')
         try {
             debug("WebSocket Recv:" + msg.data);
-            //XXX: TODO What are you going to do here?            
+            //XXX: TODO What are you going to do here?
+            // Update the world
+            Object.entries(JSON.parse(msg.data)).forEach((entity, data) => {
+                world[entity] = data
+            })
+                        
         } catch (e) {
             alert("socket on message: " + e);
         }
